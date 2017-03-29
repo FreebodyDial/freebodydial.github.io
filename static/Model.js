@@ -316,7 +316,7 @@ function Model(cursor) {
         last_undone_line = new Line();
     });*/
     
-    change_to_draw_mode(function() { return new Polygon(); });
+    change_to_draw_mode(function() { return new Line(); });
     
     this.render_to = function(view) {
         // view is a draw context object
