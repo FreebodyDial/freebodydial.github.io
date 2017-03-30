@@ -113,6 +113,10 @@ function Model(cursor) {
     }
     
     function change_to_draw_mode(create_new_diagram_object) {
+        /** In any function that changes the mode of the "model", events are
+         *  assigned to the cursor object, which is an abstraction of the users
+         *  peripherals, be it mouse and keyboard or the dial.
+         */
         cursor.set_just_clicked_event(function() {
             // do not create a primitive if the menu captures the cursor's 
             // input
@@ -154,11 +158,24 @@ function Model(cursor) {
         });
     }
     
-    m_bar_menu.push_entry("Edit", function() {
+    /***************************************************************************
+     *  Add Bar Menu Events; each entry contains code that will run when the
+     *  user presses the cursor inside that entry
+     **************************************************************************/
+    
+    m_bar_menu.push_entry("Edit", function(entry) {
         m_diagram_objects.forEach(function(object) { 
             object.enable_editing();
         });
-        console.log("edit");
+        
+        /** This is called by the menu whenever the user leaves the current 
+         *  mode.
+         */
+        entry.on_mode_exit = function () {
+            m_diagram_objects.forEach(function(object) { 
+                object.disable_editing();
+            });
+        };
 
         cursor.set_just_clicked_event(function() {
             if (m_bar_menu.check_click(cursor.location()))
@@ -192,38 +209,64 @@ function Model(cursor) {
     });
     
     m_bar_menu.push_entry("Draw", function() {
-        m_diagram_objects.forEach(function(object) {
-            object.disable_editing();
-        });
         change_to_draw_mode(function() { return new Line() });
     });
+    m_bar_menu.set_last_added_entry_as_default();
     
     m_bar_menu.push_entry("Polygon", function() {
-        m_diagram_objects.forEach(function(object) {
-            object.disable_editing();
-        });
         change_to_draw_mode(function() { return new Polygon() });
     });
     
     var finish_grouping = function() {
-        if (m_candidate_group !== undefined) {
-            m_candidate_group.forEach(function(item) {
-                item.unhighlight();
-            });
-            m_diagram_objects.push(new Group(m_candidate_group));
+        if (m_candidate_group === undefined) return;
+        if (m_candidate_group.length === 0) {
             m_candidate_group = undefined;
+            return;
         }
+        // candidate groups with one member -> is already a 'group'
+        else if (m_candidate_group.length === 1) {
+            m_diagram_objects.push(m_candidate_group[0]);
+            m_candidate_group = undefined;
+            return;
+        }
+        
+        // usual grouping behavior
+        m_candidate_group.forEach(function(item) {
+            item.unhighlight();
+        });
+        m_diagram_objects.push(new Group(m_candidate_group));
+        m_candidate_group = undefined;
     }
     
     var m_candidate_group = undefined;
     var m_groups = [];
-    m_bar_menu.push_entry("Group", function() {
-        m_diagram_objects.forEach(function(object) { 
-            object.enable_editing();
-        });
+    var k = { GROUP_DONE_TEXT : "Group Done" };
+    Object.freeze(k);
+    m_bar_menu.push_entry("Group", function(entry) {
         var cursor = m_cursor_ref;
         m_candidate_group = [];
         cursor.reset_events();
+
+        entry.on_mode_exit = function (entry) {
+            console.log('Left grouping mode.');
+            
+            if (entry.text === k.GROUP_DONE_TEXT) {
+                finish_grouping();
+                return;
+            }
+            
+            if (m_candidate_group === undefined)
+                return;
+            
+            m_candidate_group.forEach(function(object) {
+                m_diagram_objects.push(object);
+            });
+            m_diagram_objects.forEach(function(object) {
+                object.unhighlight();
+            });
+            m_candidate_group = undefined;
+        }
+        
         cursor.set_just_released_event(function() {
             if (m_bar_menu.check_click(cursor.location()))
                 return;
@@ -243,13 +286,8 @@ function Model(cursor) {
         });
     });
     
-    m_bar_menu.push_entry("Group Done", function() {
-        m_diagram_objects.forEach(function(object) { 
-            object.enable_editing();
-        });
+    m_bar_menu.push_entry(k.GROUP_DONE_TEXT, function() {
         var cursor = m_cursor_ref;
-        
-        finish_grouping();
         
         cursor.reset_events();
         cursor.set_just_released_event(function() {
@@ -290,7 +328,6 @@ function Model(cursor) {
     });
 
     m_bar_menu.push_entry("Save", function(){
-        var id = 'main-canvas';
         var currentdate = new Date(); 
         var datetime = currentdate.getDate() + "-"
                 + (currentdate.getMonth()+1)  + "-" 
@@ -299,24 +336,39 @@ function Model(cursor) {
                 + currentdate.getMinutes() + "-" 
                 + currentdate.getSeconds();
         var fileName = 'canvas_' + datetime.toString();
-
-        var canvasElement = document.getElementById(id);
-
+        var canvasElement = document.getElementById('main-canvas');
+        var window_width = canvasElement.width;
+        var window_height = canvasElement.height;
+        var tempCanvas = document.createElement("canvas"),
+        tCtx = tempCanvas.getContext("2d");
+       
+        tCtx.canvas.width = window_width;
+        tCtx.canvas.height = window_height - window_height/7;
+        var x_start = 0;
+        var y_start_org = window_height/7;
+        var y_start_copy = 0;
+        var width = window_width ;
+        var height = window_height - window_height/7;
+      
+        tCtx.drawImage(canvasElement, 
+            x_start, 
+            y_start_org, 
+            width,  
+            height, 
+            x_start, 
+            y_start_copy, 
+            width, 
+            height);
         var MIME_TYPE = "image/png";
-
-        var imgURL = canvasElement.toDataURL(MIME_TYPE);
-
+        var imgURL = tempCanvas.toDataURL(MIME_TYPE);
         var dlLink = document.createElement('a');
         dlLink.download = fileName;
         dlLink.href = imgURL;
         dlLink.dataset.downloadurl = [MIME_TYPE, dlLink.download, dlLink.href].join(':');
-
         document.body.appendChild(dlLink);
         dlLink.click();
         document.body.removeChild(dlLink);
     });
-
-
 
     /*m_bar_menu.push_entry("Redo", function(){
         console.log("Redo");
@@ -324,23 +376,20 @@ function Model(cursor) {
         last_undone_line = new Line();
     });*/
     
-    change_to_draw_mode(function() { return new Line(); });
-    
     this.render_to = function(view) {
         // view is a draw context object
         view.fillStyle = "#000";
-        if (m_cursor_box !== undefined) {
-            view.fillRect(m_cursor_box.x    , m_cursor_box.y,
-                          m_cursor_box.width, m_cursor_box.height);
-        }
         function draw_each_of(array) {
             array.forEach(function(item) { item.draw(view); });
         }
         draw_each_of(m_diagram_objects);
-
         if (m_candidate_group !== undefined) {
-            m_candidate_group.forEach(function(primitive) { primitive.draw(view); });
+            draw_each_of(m_candidate_group);
         }
         m_bar_menu.draw(view);
+        if (m_cursor_box !== undefined) {
+            view.fillRect(m_cursor_box.x    , m_cursor_box.y,
+                          m_cursor_box.width, m_cursor_box.height);
+        }
     }
 }
