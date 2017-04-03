@@ -1,5 +1,27 @@
+/*******************************************************************************
+ * 
+ *  Copyright 2017
+ *  Authors: Andrew Janke, Dennis Chang, Lious Boehm, Adithya Ramanathan
+ *  Released under the GPLv3 
+ * 
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * 
+ ******************************************************************************/
+
 "use strict";
 
+// Less behavioral and more assertation. 
 (function(){
     // "concept checking"
     // must meet a "common interface"
@@ -12,10 +34,12 @@
             "point_within", "bounds",
             "explode", 
             "draw", 
-            // events
+            // events -> for editing
             "handle_cursor_move", "handle_cursor_click",
             // edit mode specific
-            "enable_editing", "disable_editing"];
+            "enable_editing", "disable_editing",
+            // momento save/restore
+            "expose"];
         var rv = "";
         required_functions.forEach(function(str) {
             if (obj[str] === undefined) {
@@ -28,7 +52,7 @@
     function get_object_name(obj) {
         return (/^function(.{1,})\(/).exec(obj.constructor.toString())[1];
     }
-    [new Line(), new Group([]), new Polygon, new Ellipse].forEach(function(obj) {
+    [new Line(), new Group([]), new Polygon(), new Ellipse()].forEach(function(obj) {
         var gv = find_missing_function(obj);
         if (gv !== "") {
             throw get_object_name(obj) + " does not have a required " + 
@@ -68,17 +92,20 @@ function Model(cursor) {
     // weak references are not possible in JavaScript
     // I maybe stuck with type switching... (ew)
     // (perhaps in a new standard)
+    // Diagram objects themselves are the various drawn items on the canvas. 
     var m_diagram_objects = [];
     var m_last_undone_object = undefined;
     
     // :WARNING: I AM going to change how this works!
     var m_guidelines = [{ x: 1, y: 0 }, { x: 0, y: 1 }, Vector.norm({ x: 3, y: 1 }) ];
     
+    // Creates the bar menu. 
     var m_bar_menu = new BarMenu();
     
     var m_cursor_box = undefined;
     var self = this; // some closures can't get to 'this', self is a fix for 'this'
-        
+    
+    // Perform action on each line based on user button/navbar selection. 
     function for_each_line_in(array, func) {
         array.forEach(function(item) {
             if (item instanceof Line)
@@ -86,6 +113,7 @@ function Model(cursor) {
         });
     }
     
+    // Ensure that the array does not contain any undefined values - this should not occur in theory. 
     function assert_no_empties(array) {
         array.forEach(function(item) {
             if (item === undefined)
@@ -93,8 +121,10 @@ function Model(cursor) {
         });
     }
     
+    // Default cursor box size. Seen when editing. 
     function cursor_box_size() { return { x: 10, y: 10 }; }
     
+    // snapping function - so that Brad does not have to deal with "squiggly" lines
     function snap_last_object_to_guidelines() {
         if (m_diagram_objects.length === 0) return;
         m_guidelines.forEach(function(guideline) {
@@ -105,6 +135,7 @@ function Model(cursor) {
         });
     }
     
+    // Declare a minimum size requirement so that certain accidental creations aren't saved or used.
     function delete_objects_too_small() {
         m_diagram_objects = array_trim(m_diagram_objects, function(object) {
             var bounds = object.bounds();
@@ -112,19 +143,26 @@ function Model(cursor) {
         });
     }
     
+    //Changes to draw mode.
     function change_to_draw_mode(create_new_diagram_object) {
         /** In any function that changes the mode of the "model", events are
          *  assigned to the cursor object, which is an abstraction of the users
          *  peripherals, be it mouse and keyboard or the dial.
          */
         cursor.set_just_clicked_event(function() {
-            // do not create a primitive if the menu captures the cursor's 
+            // do not create a primitive if the menu captures the cursor's  
             // input
             if (m_bar_menu.check_click(cursor.location()))
                 return;
             if (m_diagram_objects.length > 0) {
-                if (!array_last(m_diagram_objects).finished_creating())
-                    return;
+                // detect if the object has finished its creation
+                // do not assume "it will tell us", but if it doesn't we will
+                // assume it has finished
+                var last_obj = array_last(m_diagram_objects);
+                if (last_obj.finished_creating !== undefined) {
+                    if (!last_obj.finished_creating())
+                        return;
+                }
             }
             // we can now trade this for any primitive
             // Say an ellipse or polygon or Text
@@ -163,7 +201,18 @@ function Model(cursor) {
      *  user presses the cursor inside that entry
      **************************************************************************/
     
+    // // // Bar menu event for Instructions
+    // m_bar_menu.push_entry("How to...", function(entry) {
+    //     //Instructions on what the user should do.
+
+        
+    // });
+
+
+
+    // Bar menu event for Edit. 
     m_bar_menu.push_entry("Edit", function(entry) {
+        // Enable editing for each object on the canvas. 
         m_diagram_objects.forEach(function(object) { 
             object.enable_editing();
         });
@@ -171,12 +220,14 @@ function Model(cursor) {
         /** This is called by the menu whenever the user leaves the current 
          *  mode.
          */
+         // Disables editing - removes control points. 
         entry.on_mode_exit = function () {
             m_diagram_objects.forEach(function(object) { 
                 object.disable_editing();
             });
         };
 
+        // Handles clicking for the variety of objects persistent on the canvas. 
         cursor.set_just_clicked_event(function() {
             if (m_bar_menu.check_click(cursor.location()))
                 return;
@@ -185,6 +236,7 @@ function Model(cursor) {
             });
         });
         
+        // Handles releasing for the variety of objects persistent on the vanvas. 
         cursor.set_just_released_event(function() {
             // indentical to draw
             // so these are common to both draw and edit?
@@ -198,6 +250,7 @@ function Model(cursor) {
         
         cursor.set_click_held_event(function() {}); // necessary, useful?
         
+        // Location of object has saed. 
         cursor.set_location_change_event(function() {
             m_cursor_box = Vector.bounds_around(cursor.location(), cursor_box_size());
             
@@ -208,15 +261,18 @@ function Model(cursor) {
         });
     });
     
-    m_bar_menu.push_entry("Draw", function() {
+    // Triggers a line drawing mode. 
+    m_bar_menu.push_entry("Line", function() {
         change_to_draw_mode(function() { return new Line() });
     });
     m_bar_menu.set_last_added_entry_as_default();
     
+    // triggers polygon drawing mode. 
     m_bar_menu.push_entry("Polygon", function() {
         change_to_draw_mode(function() { return new Polygon() });
     });
     
+    // Grouping behavior. 
     var finish_grouping = function() {
         if (m_candidate_group === undefined) return;
         if (m_candidate_group.length === 0) {
@@ -242,8 +298,10 @@ function Model(cursor) {
     var m_groups = [];
     var k = { GROUP_DONE_TEXT : "Group Done" };
     Object.freeze(k);
+    // Function for selecting objects to be grouped. 
     m_bar_menu.push_entry("Group", function(entry) {
         var cursor = m_cursor_ref;
+        // Candidate group is the various objects to be grouped. 
         m_candidate_group = [];
         cursor.reset_events();
 
@@ -258,15 +316,19 @@ function Model(cursor) {
             if (m_candidate_group === undefined)
                 return;
             
+            //Copies objects from diagram objects to candidate group
             m_candidate_group.forEach(function(object) {
                 m_diagram_objects.push(object);
             });
+            // Handles highlighting selected objects. 
             m_diagram_objects.forEach(function(object) {
                 object.unhighlight();
             });
+            // Clears out candidate group once done. 
             m_candidate_group = undefined;
         }
         
+        // Releases
         cursor.set_just_released_event(function() {
             if (m_bar_menu.check_click(cursor.location()))
                 return;
@@ -286,6 +348,7 @@ function Model(cursor) {
         });
     });
     
+    // Function that handles ending group mode. Groups the selected items. 
     m_bar_menu.push_entry(k.GROUP_DONE_TEXT, function() {
         var cursor = m_cursor_ref;
         
@@ -319,7 +382,9 @@ function Model(cursor) {
             m_cursor_box = Vector.bounds_around(cursor.location(), cursor_box_size());
         });
     });
-        
+    
+    // Function that handles undoing the last object creation.
+    // Needs to be expanded to handle undoing all actions, not just drawing related ones. 
     m_bar_menu.push_entry("Undo", function(){
         console.log("Undo!");
         // Remove the latest line added to m_lines
@@ -327,8 +392,11 @@ function Model(cursor) {
         m_diagram_objects.pop();
     });
 
+    // Saves object as png. 
     m_bar_menu.push_entry("Save", function(){
         var currentdate = new Date(); 
+
+        //Deals with naming convention. 
         var datetime = currentdate.getDate() + "-"
                 + (currentdate.getMonth()+1)  + "-" 
                 + currentdate.getFullYear() + "-"  
@@ -337,8 +405,11 @@ function Model(cursor) {
                 + currentdate.getSeconds();
         var fileName = 'canvas_' + datetime.toString();
         var canvasElement = document.getElementById('main-canvas');
+
+        // Used to crop out menu bar. 
         var window_width = canvasElement.width;
         var window_height = canvasElement.height;
+        // Create temporary canvas with elements but without menu bar. 
         var tempCanvas = document.createElement("canvas"),
         tCtx = tempCanvas.getContext("2d");
        
@@ -350,6 +421,7 @@ function Model(cursor) {
         var width = window_width ;
         var height = window_height - window_height/7;
       
+        // Create and download image. 
         tCtx.drawImage(canvasElement, 
             x_start, 
             y_start_org, 

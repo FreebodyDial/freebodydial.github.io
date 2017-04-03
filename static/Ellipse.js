@@ -1,4 +1,26 @@
+/*******************************************************************************
+ * 
+ *  Copyright 2017
+ *  Authors: Andrew Janke, Dennis Chang, Lious Boehm, Adithya Ramanathan
+ *  Released under the GPLv3 
+ * 
+ *  This program is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * 
+ ******************************************************************************/
+
 "use strict";
+
 function Ellipse() {
     assert_new.check(this);
     var m_radii = zero_vect();
@@ -9,6 +31,7 @@ function Ellipse() {
     var m_finished_creating = false;
     var self = this;
     
+    // Default values. 
     this.set_location = function(x_, y_) { m_location = { x: x_, y: y_ }; }
     this.set_radii = function(x_, y_) { m_radii = { x: x_, y: y_ }; }
     this.finished_creating = function() { return m_finished_creating; }
