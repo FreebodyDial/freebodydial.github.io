@@ -293,9 +293,6 @@ function Model(cursor) {
     });
 
 
-    m_bar_menu.push_entry("Ellipse", function () {
-        change_to_draw_mode(function() { return new Ellipse() });
-    });
     
     // Grouping behavior. 
     var finish_grouping = function() {
