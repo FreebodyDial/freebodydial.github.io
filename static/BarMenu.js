@@ -95,7 +95,7 @@ function BarMenu() {
         
         m_size = zero_vect();
         // Modify the font size based on window size - used for dynamic resizing
-        context.font = (window_height / 24)+"px Arial";
+        context.font = (window_height / 30)+"px Arial";
         context.lineWidth = 1;
         context.strokeStyle = 'black';
         
@@ -131,7 +131,7 @@ function BarMenu() {
             // Fill box with text at the right position
             context.fillText(entry.text, 
                              draw_position.x + position, 
-                             draw_position.y + entry_size.y / 2)
+                             draw_position.y + entry_size.y / 2);
 
             // Move to handle the next entry
             m_size.x += entry_size.x;
