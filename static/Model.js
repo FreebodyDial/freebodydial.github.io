@@ -21,6 +21,10 @@
 
 "use strict";
 
+//Global for keeping track of save files.
+var filename_count = 0;
+
+
 // Less behavioral and more assertation. 
 (function(){
     // "concept checking"
@@ -223,7 +227,7 @@ function Model(cursor) {
         }
 
 
-        openInNewTab("instructions.html");
+        openInNewTab("../templates/instructions.html");
 
     });
 
@@ -292,6 +296,20 @@ function Model(cursor) {
         change_to_draw_mode(function() { return new Polygon() });
     });
 
+
+    m_bar_menu.push_entry("Ellipse", function () {
+        change_to_draw_mode(function() { return new Ellipse() });
+    });
+
+
+    // Function that handles undoing the last object creation.
+    // Needs to be expanded to handle undoing all actions, not just drawing related ones. 
+    m_bar_menu.push_entry("Undo", function(){
+        console.log("Undo!");
+        // Remove the latest line added to m_lines
+        m_last_undone_object = array_last(m_diagram_objects);
+        m_diagram_objects.pop();
+    });
 
     
     // Grouping behavior. 
@@ -405,14 +423,167 @@ function Model(cursor) {
         });
     });
     
-    // Function that handles undoing the last object creation.
-    // Needs to be expanded to handle undoing all actions, not just drawing related ones. 
-    m_bar_menu.push_entry("Undo", function(){
-        console.log("Undo!");
-        // Remove the latest line added to m_lines
-        m_last_undone_object = array_last(m_diagram_objects);
-        m_diagram_objects.pop();
+    // Function that handles export of object
+    m_bar_menu.push_entry("Export", function(){
+        console.log("Export!");
+
+        // Go through the products, and call expose to create string. Concatenate all together
+        var product_str = "";
+        m_diagram_objects.forEach(function(item) {
+                item.expose(function(obj) { product_str += JSON.stringify(obj) });
+        });
+
+        // Stringify entire concatenated item
+        var myJSON = JSON.stringify(product_str);
+
+        //Function to save the item locally.
+        function saveText(text, filename){
+            var a = document.createElement('a');
+            a.setAttribute('href', 'data:text/plain;charset=utf-u,'+encodeURIComponent(text));
+            a.setAttribute('download', filename);
+            a.click()
+        }
+
+        var filename = "diagram_" + filename_count + ".json";
+        filename_count = filename_count + 1;
+        saveText( myJSON, filename);
+
     });
+
+
+    // Function that handles import of object
+    m_bar_menu.push_entry("Import", function(){
+        console.log("Import!");
+
+        document.getElementById("file_input").click();
+        var file
+        document.getElementById("file_input").onchange = function() {
+
+            // HANDLING FILE INPUT
+             $('#file_input').submit();
+            file = document.getElementById('file_input').files[0];
+            
+            function gotFile(file){
+                readAsText(file,function(str){
+                    var file_text = str;
+
+                    // PARSING JSON OBJECT    
+                    var key_words = /\b(Line|Polygon|Ellipse)\b/;
+                    var objects = file_text.split(key_words);
+                    //Remove useless first item.
+                    objects.splice(0,1)
+                    
+
+                    // Iterate through array, read type, and regenerate object accordingly. 
+                    // Push to m_diagram_objects afterwards
+                    // Increment by 2, because every two objects consitutes a pair, first of it's
+                    //      type, then of the data.
+                    for(var i = 0; i < objects.length; i+=2){
+
+                        //If it is a line
+                        if(objects[i] == "Line"){
+                            var split_words = /\b(x|y)\b/;
+                            var data = objects[i+1].split(split_words);
+                            //Remove useless first item.
+                            data.splice(0,1);
+                            for(var j = 0; j < data.length; j++){
+                                //If the item is a value for the x or y coordinate
+                                if(data[j] != "x" && data[j] != "y"){
+                                    //Strip of non-numeric values and non-decimals
+                                    data[j] = data[j].replace(/[^0-9.]/g, '');
+                                }
+
+
+                            }
+
+                            var x_start = parseFloat(data[1]);
+                            var y_start = parseFloat(data[3]);
+                            var x_end = parseFloat(data[5]);
+                            var y_end = parseFloat(data[7]);
+
+                            var c = document.getElementById("main-canvas");
+                            var ctx = c.getContext("2d");
+
+                            var import_line = new Line( custom_vect(x_start, y_start), custom_vect(x_end, y_end), true);
+                            import_line.draw(ctx);
+                            m_diagram_objects.push(import_line)
+                        }
+                        //If it is a polygon
+                        else if(objects[i] == "Polygon"){
+                            var split_words = /\b(x|y)\b/;
+                            var data = objects[i+1].split(split_words);
+                            //Remove useless first item.
+                            data.splice(0,1);
+                            for(var j = 0; j < data.length; j++){
+                                if(data[j] != "x" && data[j] != "y"){
+                                    data[j] = data[j].replace(/[^0-9.]/g, '');
+                                }
+                                //alert("J: " + j + " data: " + data[j]);
+                            }
+
+                            //every grouping of four points represents a corner
+                            // i.e. x, x_val, y, y_val
+
+                            var points = [];
+
+                            for (var j = 0; j < data.length; j+=4){
+                                var current_x = parseFloat(data[j+1]);
+                                var current_y = parseFloat(data[j+3]);
+                                
+                                points.push( custom_vect(current_x, current_y));
+
+                            }
+
+                            // alert("last line: " + start_x + " " + start_y + " " + last_x + " " + last_y);
+
+                            var c = document.getElementById("main-canvas");
+                            var ctx = c.getContext("2d");
+                            var import_polygon = new Polygon(points, true, points.length);
+                            import_polygon.draw(ctx);
+                            m_diagram_objects.push(import_polygon)
+
+                       
+
+                        // Recreate object using information stored in data.
+
+                        // Push to m_diagram_objects
+
+                        }
+                        // If it is a ellipse
+                        else if(objects[i] == "Ellipse"){
+                            alert("in ellipse");
+                            // Code needs to be added 
+                        }
+                        //else - bad situation
+                        else{
+                            var error_msg = "Bad type of " + objects[i];
+                            console.log(error_msg);
+                        }
+
+                    }
+
+
+
+
+
+                });
+            }
+
+            function readAsText(file,callback) {
+                var reader = new FileReader();
+                reader.onloadend = function() {
+                 callback(reader.result);
+                };
+                reader.readAsText(file);
+            }
+
+            gotFile(file);
+
+
+            
+        };
+    });
+
 
     // Saves object as png. 
     m_bar_menu.push_entry("Save", function(){
@@ -436,12 +607,12 @@ function Model(cursor) {
         tCtx = tempCanvas.getContext("2d");
 
         tCtx.canvas.width = window_width;
-        tCtx.canvas.height = window_height - window_height/7;
+        tCtx.canvas.height = window_height - window_height/3.5;
         var x_start = 0;
-        var y_start_org = window_height/7;
+        var y_start_org = window_height/3.5;
         var y_start_copy = 0;
         var width = window_width ;
-        var height = window_height - window_height/7;
+        var height = window_height - window_height/3.5;
       
         // Create and download image. 
         tCtx.drawImage(canvasElement, 
@@ -476,12 +647,12 @@ m_bar_menu.push_entry("Print", function(){
         tCtx = tempCanvas.getContext("2d");
        
         tCtx.canvas.width = window_width;
-        tCtx.canvas.height = window_height - window_height/7;
+        tCtx.canvas.height = window_height - window_height/3.5;
         var x_start = 0;
-        var y_start_org = window_height/7;
+        var y_start_org = window_height/3.5;
         var y_start_copy = 0;
         var width = window_width ;
-        var height = window_height - window_height/7;
+        var height = window_height - window_height/3.5;
       
         // Create and download image. 
         tCtx.drawImage(canvasElement, 
