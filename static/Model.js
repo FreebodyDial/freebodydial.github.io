@@ -227,7 +227,7 @@ function Model(cursor) {
         }
 
 
-        openInNewTab("../templates/instructions.html");
+        openInNewTab("../instructions.html");
 
     });
 
